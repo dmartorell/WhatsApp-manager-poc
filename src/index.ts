@@ -25,10 +25,12 @@ app.get('/messages', (c) => {
   <title>WhatsApp Manager - Mensajes</title>
   <meta charset="utf-8">
   <style>
-    body { font-family: system-ui, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; background: #f5f5f5; }
+    body { font-family: system-ui, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px 40px; background: #f5f5f5; }
     h1 { color: #5b8def; }
-    table { width: 100%; border-collapse: collapse; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    table { width: 100%; border-collapse: collapse; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden; }
     th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; }
+    th:first-child, td:first-child { padding-left: 20px; }
+    th:last-child, td:last-child { padding-right: 20px; }
     th { background: #5b8def; color: white; }
     tr:hover { background: #f9f9f9; }
     .category { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
