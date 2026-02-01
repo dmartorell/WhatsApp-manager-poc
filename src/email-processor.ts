@@ -4,8 +4,13 @@ import {
   markMessagesAsEmailed,
   markQueueAsSent,
   markQueueAsFailed,
+  markUserMessagesAsReplied,
+  classifyUserMessages,
+  hasUserReceivedReply,
 } from './db.js';
 import { sendConsolidatedEmail, isEmailConfigured } from './email.js';
+import { sendTextMessage, buildAutoReply } from './whatsapp.js';
+import { classifyMessage, getAdvisorsByCategories } from './classifier.js';
 
 const CONTEXT_WINDOW_SECONDS = 15;
 const PROCESS_INTERVAL_MS = 10000;
@@ -23,27 +28,99 @@ export async function processEmailQueue(): Promise<void> {
     return;
   }
 
-  console.log(`📬 Procesando ${pendingEmails.length} email(s) pendiente(s)...`);
+  console.log(`📬 Procesando ${pendingEmails.length} entrada(s) pendiente(s)...`);
 
   for (const queueEntry of pendingEmails) {
     try {
-      const messages = getUnsentMessagesForUser(queueEntry.from_phone, queueEntry.created_at);
+      const messages = getUnsentMessagesForUser(queueEntry.from_phone);
 
       if (messages.length === 0) {
-        // No hay mensajes para enviar, marcar como enviado
         markQueueAsSent(queueEntry.id);
         continue;
       }
 
-      const success = await sendConsolidatedEmail(messages, queueEntry.advisor_email);
+      // ═══════════════════════════════════════════════════════════
+      // CLASIFICACIÓN DIFERIDA: Clasificar todos los mensajes juntos
+      // ═══════════════════════════════════════════════════════════
 
-      if (success) {
-        const messageIds = messages.map((m) => m.id);
+      // Concatenar todos los textos para clasificación
+      const allTexts = messages
+        .map((m) => m.content_text)
+        .filter((t): t is string => Boolean(t))
+        .join('\n');
+
+      const hasAttachments = messages.some((m) => m.media_url);
+
+      // Clasificar con todo el contexto
+      console.log(`🤖 Clasificando ${messages.length} mensaje(s) de ${queueEntry.from_phone}...`);
+      const textToClassify = allTexts || 'Documento adjunto sin texto';
+      const classification = await classifyMessage(textToClassify, { hasAttachment: hasAttachments });
+
+      const categories = classification.categorias;
+      const summary = classification.resumen;
+      const advisors = getAdvisorsByCategories(categories);
+
+      // Para la DB, guardamos las categorías como string separado por comas
+      const categoryString = categories.join(', ');
+      const advisorEmails = advisors.map((a) => a.email);
+      const advisorEmailString = advisorEmails.join(', ');
+
+      console.log(`📊 Clasificación: ${categoryString}`);
+      console.log(`📝 Resumen: ${summary}`);
+      console.log(`👤 Asesores: ${advisors.map((a) => a.name).join(', ')}`);
+
+      // Actualizar todos los mensajes con la clasificación
+      const messageIds = messages.map((m) => m.id);
+      classifyUserMessages(messageIds, categoryString, summary, advisorEmailString);
+
+      // Actualizar los mensajes en memoria para el email
+      const classifiedMessages = messages.map((m) => ({
+        ...m,
+        category: categoryString,
+        summary,
+        assigned_to: advisorEmailString,
+      }));
+
+      // ═══════════════════════════════════════════════════════════
+      // Enviar auto-respuesta al cliente
+      // ═══════════════════════════════════════════════════════════
+      const alreadyReplied = hasUserReceivedReply(queueEntry.from_phone);
+
+      if (!alreadyReplied) {
+        // Si hay múltiples categorías específicas, usar mensaje genérico
+        const replyText = buildAutoReply(categories);
+        const replySent = await sendTextMessage(queueEntry.from_phone, replyText);
+
+        if (replySent) {
+          markUserMessagesAsReplied(queueEntry.from_phone);
+          console.log(`📤 Auto-respuesta enviada a ${queueEntry.from_phone}`);
+        } else {
+          console.error(`⚠️  Error enviando auto-respuesta a ${queueEntry.from_phone}`);
+        }
+      }
+
+      // ═══════════════════════════════════════════════════════════
+      // Enviar email consolidado a TODOS los asesores relevantes
+      // ═══════════════════════════════════════════════════════════
+      let allEmailsSent = true;
+
+      for (const advisor of advisors) {
+        const success = await sendConsolidatedEmail(classifiedMessages, advisor.email);
+
+        if (success) {
+          console.log(`✅ Email enviado a ${advisor.email} (${advisor.category})`);
+        } else {
+          console.error(`❌ Error enviando email a ${advisor.email}`);
+          allEmailsSent = false;
+        }
+      }
+
+      if (allEmailsSent) {
         markMessagesAsEmailed(messageIds);
         markQueueAsSent(queueEntry.id);
-        console.log(`✅ Email consolidado enviado (${messages.length} mensaje(s))`);
+        console.log(`✅ Todos los emails enviados (${messages.length} mensaje(s) a ${advisors.length} asesor(es))`);
       } else {
-        markQueueAsFailed(queueEntry.id, 'Error enviando email');
+        markQueueAsFailed(queueEntry.id, 'Error enviando algunos emails');
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);

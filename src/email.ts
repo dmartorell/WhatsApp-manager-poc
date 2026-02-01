@@ -68,6 +68,47 @@ export function isEmailConfigured(): boolean {
   return Boolean(config.smtpHost && config.smtpUser && config.smtpPassword);
 }
 
+// Formateo de fecha y hora en español
+function formatDateSpanish(dateString: string): string {
+  const days = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+  const months = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+  const date = new Date(dateString.replace(' ', 'T'));
+  const dayName = days[date.getDay()];
+  const day = date.getDate();
+  const month = months[date.getMonth()];
+
+  return `${dayName}, ${day} de ${month}`;
+}
+
+function formatTime24h(dateString: string): string {
+  const date = new Date(dateString.replace(' ', 'T'));
+  const hours = date.getHours().toString().padStart(2, '0');
+  const minutes = date.getMinutes().toString().padStart(2, '0');
+  return `${hours}:${minutes}`;
+}
+
+// Colores de categorías para emails
+function getCategoryStyle(category: string): { background: string; color: string } {
+  const styles: Record<string, { background: string; color: string }> = {
+    fiscal: { background: '#e3f2fd', color: '#1565c0' },
+    laboral: { background: '#fff3e0', color: '#ef6c00' },
+    contabilidad: { background: '#e8f5e9', color: '#2e7d32' },
+    recepcion: { background: '#fce4ec', color: '#c2185b' },
+  };
+  return styles[category] || { background: '#e0e0e0', color: '#333' };
+}
+
+function renderCategoryBadges(categoryString: string): string {
+  const categories = categoryString.split(', ').map((c) => c.trim());
+  return categories
+    .map((cat) => {
+      const style = getCategoryStyle(cat);
+      return `<span style="background: ${style.background}; color: ${style.color}; padding: 4px 10px; border-radius: 4px; font-weight: bold; font-size: 13px; display: inline-block; margin-right: 8px; margin-bottom: 4px;">${cat}</span>`;
+    })
+    .join('');
+}
+
 interface ForwardMessageOptions {
   advisorEmail: string;
   advisorName: string;
@@ -91,7 +132,7 @@ Nueva consulta recibida por WhatsApp
 Cliente: ${clientDisplay}
 Teléfono: ${options.clientPhone}
 Categoría: ${options.category}
-Resumen IA: ${options.summary}
+Resumen: ${options.summary}
 
 ${options.messageText ? `Mensaje:\n${options.messageText}` : '(Sin texto, solo adjuntos)'}
 
@@ -115,10 +156,10 @@ Enviado automáticamente por WhatsApp Manager
     </tr>
     <tr>
       <td style="padding: 8px; border: 1px solid #ddd; background: #f9f9f9;"><strong>Categoría</strong></td>
-      <td style="padding: 8px; border: 1px solid #ddd;"><span style="background: #e3f2fd; padding: 2px 8px; border-radius: 4px;">${options.category}</span></td>
+      <td style="padding: 8px; border: 1px solid #ddd;">${renderCategoryBadges(options.category)}</td>
     </tr>
     <tr>
-      <td style="padding: 8px; border: 1px solid #ddd; background: #f9f9f9;"><strong>Resumen IA</strong></td>
+      <td style="padding: 8px; border: 1px solid #ddd; background: #f9f9f9;"><strong>Resumen</strong></td>
       <td style="padding: 8px; border: 1px solid #ddd;"><em>${options.summary}</em></td>
     </tr>
   </table>
@@ -172,24 +213,51 @@ export async function sendConsolidatedEmail(
 
   const subject = `[${category.toUpperCase()}] ${clientDisplay}: ${summary}`;
 
-  // Recopilar todos los textos y adjuntos
-  const textParts: string[] = [];
+  // Recopilar contenido de cada mensaje y adjuntos
+  interface MessageContent {
+    text: string;
+    hasAttachment: boolean;
+    attachmentName?: string;
+  }
+  const messageContents: MessageContent[] = [];
   const attachments: EmailAttachment[] = [];
 
   for (const msg of messages) {
-    if (msg.content_text) {
-      textParts.push(msg.content_text);
-    }
+    const filename = msg.media_url ? (msg.media_url.split('/').pop() || 'adjunto') : undefined;
+
     if (msg.media_url) {
-      const filename = msg.media_url.split('/').pop() || 'adjunto';
       attachments.push({
-        filename,
+        filename: filename!,
         path: msg.media_url,
+      });
+    }
+
+    if (msg.content_text && msg.media_url) {
+      // Texto + adjunto (imagen/documento con caption)
+      messageContents.push({
+        text: msg.content_text,
+        hasAttachment: true,
+        attachmentName: filename,
+      });
+    } else if (msg.media_url) {
+      // Solo adjunto sin texto
+      messageContents.push({
+        text: `📎 ${filename}`,
+        hasAttachment: true,
+        attachmentName: filename,
+      });
+    } else if (msg.content_text) {
+      // Solo texto
+      messageContents.push({
+        text: msg.content_text,
+        hasAttachment: false,
       });
     }
   }
 
-  const combinedText = textParts.join('\n\n---\n\n') || '(Sin texto, solo adjuntos)';
+  const combinedText = messageContents.length > 0
+    ? messageContents.map((m) => m.hasAttachment && !m.text.startsWith('📎') ? `${m.text}\n📎 ${m.attachmentName}` : m.text).join('\n\n---\n\n')
+    : '(Sin contenido)';
 
   const textBody = `
 Nueva consulta recibida por WhatsApp
@@ -198,7 +266,7 @@ Nueva consulta recibida por WhatsApp
 Cliente: ${clientDisplay}
 Teléfono: ${firstMessage.from_phone}
 Categoría: ${category}
-Resumen IA: ${summary}
+Resumen: ${summary}
 ${messages.length === 1 ? '1 mensaje' : `${messages.length} mensajes agrupados`}
 
 Mensaje(s):
@@ -209,20 +277,37 @@ ${attachments.length > 0 ? `\nAdjuntos: ${attachments.length} archivo(s)` : ''}
 Enviado automáticamente por WhatsApp Manager
 `.trim();
 
-  const messagesHtml = textParts.length > 0
-    ? textParts.map((t, i) => `
-      <div style="background: #f5f5f5; padding: 15px; border-left: 4px solid #25D366; margin-bottom: 10px;">
-        ${textParts.length > 1 ? `<small style="color: #666;">Mensaje ${i + 1}:</small><br>` : ''}
-        ${t.replace(/\n/g, '<br>')}
+  const messagesHtml = messageContents.length > 0
+    ? messageContents.map((m, i) => {
+      const isOnlyAttachment = m.text.startsWith('📎');
+      const bgColor = isOnlyAttachment ? '#e8f5e9' : '#f5f5f5';
+      const borderColor = isOnlyAttachment ? '#4CAF50' : '#25D366';
+      const attachmentIndicator = m.hasAttachment && !isOnlyAttachment
+        ? `<br><span style="color: #4CAF50;">📎 ${m.attachmentName}</span>`
+        : '';
+
+      return `
+      <div style="background: ${bgColor}; padding: 15px; border-left: 4px solid ${borderColor}; margin-bottom: 10px;">
+        ${messageContents.length > 1 ? `<small style="color: #666;">Mensaje ${i + 1}:</small><br>` : ''}
+        ${m.text.replace(/\n/g, '<br>')}${attachmentIndicator}
       </div>
-    `).join('')
-    : '<p><em>(Sin texto, solo adjuntos)</em></p>';
+    `;
+    }).join('')
+    : '<p><em>(Sin contenido)</em></p>';
 
   const htmlBody = `
 <div style="font-family: Arial, sans-serif; max-width: 600px;">
   <h2 style="color: #25D366;">Nueva consulta por WhatsApp</h2>
 
   <table style="border-collapse: collapse; width: 100%; margin-bottom: 20px;">
+    <tr>
+      <td style="padding: 8px; border: 1px solid #ddd; background: #f9f9f9;"><strong>Fecha</strong></td>
+      <td style="padding: 8px; border: 1px solid #ddd;">${formatDateSpanish(firstMessage.created_at)}</td>
+    </tr>
+    <tr>
+      <td style="padding: 8px; border: 1px solid #ddd; background: #f9f9f9;"><strong>Hora</strong></td>
+      <td style="padding: 8px; border: 1px solid #ddd;">${formatTime24h(firstMessage.created_at)}</td>
+    </tr>
     <tr>
       <td style="padding: 8px; border: 1px solid #ddd; background: #f9f9f9;"><strong>Cliente</strong></td>
       <td style="padding: 8px; border: 1px solid #ddd;">${clientDisplay}</td>
@@ -233,10 +318,10 @@ Enviado automáticamente por WhatsApp Manager
     </tr>
     <tr>
       <td style="padding: 8px; border: 1px solid #ddd; background: #f9f9f9;"><strong>Categoría</strong></td>
-      <td style="padding: 8px; border: 1px solid #ddd;"><span style="background: #e3f2fd; padding: 2px 8px; border-radius: 4px;">${category}</span></td>
+      <td style="padding: 8px; border: 1px solid #ddd;">${renderCategoryBadges(category)}</td>
     </tr>
     <tr>
-      <td style="padding: 8px; border: 1px solid #ddd; background: #f9f9f9;"><strong>Resumen IA</strong></td>
+      <td style="padding: 8px; border: 1px solid #ddd; background: #f9f9f9;"><strong>Resumen</strong></td>
       <td style="padding: 8px; border: 1px solid #ddd;"><em>${summary}</em></td>
     </tr>
     <tr>

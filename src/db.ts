@@ -188,35 +188,41 @@ export function updateMessageMedia(waMessageId: string, mediaUrl: string): void 
 
 // ========== EMAIL QUEUE ==========
 
-export function enqueueEmail(fromPhone: string, advisorEmail: string): void {
+export function enqueueEmail(fromPhone: string): void {
   // Solo insertar si no existe una entrada pendiente para este usuario
   const existing = db.prepare(`
     SELECT 1 FROM email_queue
-    WHERE from_phone = ? AND advisor_email = ? AND status = 'pending'
-  `).get(fromPhone, advisorEmail);
+    WHERE from_phone = ? AND status = 'pending'
+  `).get(fromPhone);
 
   if (!existing) {
     const stmt = db.prepare(`
       INSERT INTO email_queue (from_phone, advisor_email)
-      VALUES (?, ?)
+      VALUES (?, '')
     `);
-    stmt.run(fromPhone, advisorEmail);
+    stmt.run(fromPhone);
   }
 }
 
 export interface PendingEmailQueue {
   id: number;
   from_phone: string;
-  advisor_email: string;
   created_at: string;
 }
 
 export function getPendingEmails(windowSeconds: number): PendingEmailQueue[] {
+  // Obtener colas pendientes donde el ÚLTIMO mensaje del usuario
+  // tiene más de windowSeconds segundos de antigüedad
   const stmt = db.prepare(`
-    SELECT id, from_phone, advisor_email, created_at
-    FROM email_queue
-    WHERE status = 'pending'
-      AND created_at < datetime('now', '-' || ? || ' seconds')
+    SELECT eq.id, eq.from_phone, eq.created_at
+    FROM email_queue eq
+    WHERE eq.status = 'pending'
+      AND (
+        SELECT MAX(m.created_at)
+        FROM messages m
+        WHERE m.from_phone = eq.from_phone
+          AND m.email_sent = 0
+      ) < datetime('now', '-' || ? || ' seconds')
   `);
   return stmt.all(windowSeconds) as PendingEmailQueue[];
 }
@@ -235,19 +241,16 @@ export interface MessageForEmail {
   created_at: string;
 }
 
-export function getUnsentMessagesForUser(fromPhone: string, queueCreatedAt: string): MessageForEmail[] {
-  // Obtener solo mensajes de la ventana de contexto actual:
-  // Desde 15 segundos antes del created_at de la cola hasta el momento actual
+export function getUnsentMessagesForUser(fromPhone: string): MessageForEmail[] {
+  // Obtener todos los mensajes no enviados del usuario
   const stmt = db.prepare(`
     SELECT id, wa_message_id, from_phone, from_name, content_type, content_text, media_url, category, summary, assigned_to, created_at
     FROM messages
     WHERE from_phone = ?
       AND email_sent = 0
-      AND category IS NOT NULL
-      AND created_at >= datetime(?, '-15 seconds')
     ORDER BY created_at ASC
   `);
-  return stmt.all(fromPhone, queueCreatedAt) as MessageForEmail[];
+  return stmt.all(fromPhone) as MessageForEmail[];
 }
 
 export function markMessagesAsEmailed(messageIds: number[]): void {
@@ -273,4 +276,82 @@ export function markQueueAsFailed(queueId: number, error: string): void {
     WHERE id = ?
   `);
   stmt.run(error, queueId);
+}
+
+// ========== AUTO-REPLY MANAGEMENT ==========
+
+export interface AutoReplyInfo {
+  fromPhone: string;
+  category: string;
+  needsAutoReply: boolean;
+}
+
+export function getAutoReplyInfo(fromPhone: string): AutoReplyInfo | null {
+  // Obtener info para auto-respuesta: categoría y si ya se envió respuesta
+  // Usamos el primer mensaje clasificado (el que tiene el resumen real, no los heredados)
+  const stmt = db.prepare(`
+    SELECT
+      from_phone,
+      category,
+      MAX(wa_reply_sent) as any_reply_sent
+    FROM messages
+    WHERE from_phone = ?
+      AND email_sent = 0
+      AND category IS NOT NULL
+    GROUP BY from_phone
+  `);
+
+  const result = stmt.get(fromPhone) as {
+    from_phone: string;
+    category: string;
+    any_reply_sent: number;
+  } | undefined;
+
+  if (!result) return null;
+
+  return {
+    fromPhone: result.from_phone,
+    category: result.category,
+    needsAutoReply: result.any_reply_sent === 0,
+  };
+}
+
+export function markUserMessagesAsReplied(fromPhone: string): void {
+  const stmt = db.prepare(`
+    UPDATE messages
+    SET wa_reply_sent = 1
+    WHERE from_phone = ?
+      AND email_sent = 0
+      AND wa_reply_sent = 0
+  `);
+  stmt.run(fromPhone);
+}
+
+// ========== DEFERRED CLASSIFICATION ==========
+
+export function classifyUserMessages(
+  messageIds: number[],
+  category: string,
+  summary: string,
+  assignedTo: string,
+): void {
+  if (messageIds.length === 0) return;
+  const placeholders = messageIds.map(() => '?').join(',');
+  const stmt = db.prepare(`
+    UPDATE messages
+    SET category = ?, summary = ?, assigned_to = ?
+    WHERE id IN (${placeholders})
+  `);
+  stmt.run(category, summary, assignedTo, ...messageIds);
+}
+
+export function hasUserReceivedReply(fromPhone: string): boolean {
+  const stmt = db.prepare(`
+    SELECT 1 FROM messages
+    WHERE from_phone = ?
+      AND email_sent = 0
+      AND wa_reply_sent = 1
+    LIMIT 1
+  `);
+  return stmt.get(fromPhone) !== undefined;
 }

@@ -37,8 +37,25 @@ export async function sendTextMessage(to: string, text: string): Promise<boolean
   }
 }
 
-export function buildAutoReply(advisorName: string): string {
-  return `Hemos recibido tu consulta. Tu asesor ${advisorName} te contactará en breve.`;
+export function buildAutoReply(categories: string[]): string {
+  const areaNames: Record<string, string> = {
+    fiscal: 'fiscal',
+    laboral: 'laboral',
+    contabilidad: 'contabilidad',
+  };
+
+  // Filtrar solo categorías específicas (no recepción)
+  const specificAreas = categories
+    .map((c) => areaNames[c])
+    .filter((a): a is string => Boolean(a));
+
+  if (specificAreas.length === 1) {
+    // Una sola categoría específica
+    return `Hemos recibido tu consulta. Nuestro equipo de área ${specificAreas[0]} te contactará lo antes posible.`;
+  }
+
+  // Múltiples categorías o solo recepción → mensaje genérico
+  return 'Hemos recibido tu consulta. Nuestro equipo te contactará lo antes posible.';
 }
 
 interface MediaInfo {

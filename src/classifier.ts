@@ -3,8 +3,8 @@ import { advisorsConfig, AdvisorsConfig } from './advisors.js';
 
 const anthropic = new Anthropic();
 
-interface ClassificationResult {
-  categoria: string;
+export interface ClassificationResult {
+  categorias: string[];
   resumen: string;
 }
 
@@ -18,19 +18,23 @@ function buildPrompt(advisors: AdvisorsConfig): string {
     .join('\n');
 
   return `Eres el sistema de clasificación de una gestoría. Dado un mensaje de un cliente
-(en castellano o catalán), clasifícalo en UNA de estas categorías:
+(en castellano o catalán), identifica TODOS los temas presentes.
+
+Categorías disponibles:
 ${categories}
 
-IMPORTANTE: Usa "recepcion" en estos casos:
-- Mensajes sin consulta clara de gestoría (saludos, mensajes ambiguos)
-- Peticiones de hablar con alguien o contacto urgente sin especificar tema
-- Preguntas sobre la oficina: horarios, dirección, cómo llegar, teléfono, etc.
-- Mensajes que no son consultas profesionales de asesoría
+REGLAS DE CLASIFICACIÓN:
+1. Identifica TODAS las categorías que apliquen al mensaje
+2. Si el mensaje menciona varios temas (ej: "quiero pagar IVA y tengo dudas sobre una nómina"), incluye ambas categorías
+3. Usa "recepcion" SOLO para:
+   - Mensajes puramente sobre horarios, dirección, teléfono de la oficina
+   - Saludos sin contenido profesional ("hola", "buenos días")
+   - Preguntas sobre empleados específicos ("está María?")
+4. Si hay contenido profesional (fiscal/laboral/contabilidad) junto con preguntas de recepción (horarios), NO incluyas recepcion
 
-Solo clasifica como fiscal/laboral/contabilidad si el mensaje es claramente una consulta profesional sobre esos temas.
-
-Responde SOLO con un JSON: {"categoria": "...", "resumen": "..."}
-El resumen debe ser una frase de máximo 15 palabras describiendo la consulta.`;
+Responde SOLO con un JSON: {"categorias": ["..."], "resumen": "..."}
+- categorias: array con una o más categorías
+- resumen: frase de máximo 15 palabras describiendo la consulta principal`;
 }
 
 export async function classifyMessage(
@@ -56,17 +60,41 @@ export async function classifyMessage(
 
   const content = response.content[0];
   if (content.type !== 'text') {
-    return { categoria: 'recepcion', resumen: 'Error al procesar respuesta' };
+    return { categorias: ['recepcion'], resumen: 'Error al procesar respuesta' };
   }
 
   try {
-    return JSON.parse(content.text) as ClassificationResult;
+    const parsed = JSON.parse(content.text) as { categorias: string[]; resumen: string };
+
+    // Validar que categorias sea un array
+    if (!Array.isArray(parsed.categorias) || parsed.categorias.length === 0) {
+      return { categorias: ['recepcion'], resumen: parsed.resumen || 'Consulta general' };
+    }
+
+    // Aplicar lógica de fallback: si hay categorías específicas, eliminar recepcion
+    const specificCategories = parsed.categorias.filter((c) => c !== 'recepcion');
+    const finalCategories = specificCategories.length > 0 ? specificCategories : parsed.categorias;
+
+    return {
+      categorias: finalCategories,
+      resumen: parsed.resumen,
+    };
   } catch {
-    return { categoria: 'recepcion', resumen: 'Error al parsear clasificación' };
+    return { categorias: ['recepcion'], resumen: 'Error al parsear clasificación' };
   }
 }
 
 export function getAdvisorByCategory(category: string): { name: string; email: string } {
   const advisor = advisorsConfig.advisors.find((a) => a.category === category);
   return advisor || advisorsConfig.recepcion;
+}
+
+export function getAdvisorsByCategories(categories: string[]): Array<{ name: string; email: string; category: string }> {
+  return categories.map((category) => {
+    const advisor = advisorsConfig.advisors.find((a) => a.category === category);
+    if (advisor) {
+      return { name: advisor.name, email: advisor.email, category };
+    }
+    return { name: advisorsConfig.recepcion.name, email: advisorsConfig.recepcion.email, category: 'recepcion' };
+  });
 }
