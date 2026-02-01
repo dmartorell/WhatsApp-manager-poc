@@ -1,4 +1,5 @@
 .env
 node_modules/
 media/
+logs/
 *.db
