@@ -21,7 +21,13 @@ function buildPrompt(advisors: AdvisorsConfig): string {
 (en castellano o catalán), clasifícalo en UNA de estas categorías:
 ${categories}
 
-Si el mensaje no encaja claramente en ninguna categoría, usa "fallback".
+IMPORTANTE: Usa "recepcion" en estos casos:
+- Mensajes sin consulta clara de gestoría (saludos, mensajes ambiguos)
+- Peticiones de hablar con alguien o contacto urgente sin especificar tema
+- Preguntas sobre la oficina: horarios, dirección, cómo llegar, teléfono, etc.
+- Mensajes que no son consultas profesionales de asesoría
+
+Solo clasifica como fiscal/laboral/contabilidad si el mensaje es claramente una consulta profesional sobre esos temas.
 
 Responde SOLO con un JSON: {"categoria": "...", "resumen": "..."}
 El resumen debe ser una frase de máximo 15 palabras describiendo la consulta.`;
@@ -50,17 +56,17 @@ export async function classifyMessage(
 
   const content = response.content[0];
   if (content.type !== 'text') {
-    return { categoria: 'fallback', resumen: 'Error al procesar respuesta' };
+    return { categoria: 'recepcion', resumen: 'Error al procesar respuesta' };
   }
 
   try {
     return JSON.parse(content.text) as ClassificationResult;
   } catch {
-    return { categoria: 'fallback', resumen: 'Error al parsear clasificación' };
+    return { categoria: 'recepcion', resumen: 'Error al parsear clasificación' };
   }
 }
 
 export function getAdvisorByCategory(category: string): { name: string; email: string } {
   const advisor = advisorsConfig.advisors.find((a) => a.category === category);
-  return advisor || advisorsConfig.fallback;
+  return advisor || advisorsConfig.recepcion;
 }

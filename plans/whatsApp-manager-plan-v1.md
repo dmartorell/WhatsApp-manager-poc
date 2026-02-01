@@ -68,7 +68,7 @@ Las categorías y asesores se configuran en un JSON editable (`config/advisors.j
     { "category": "laboral", "description": "Nóminas, contratos, Seguridad Social, bajas, altas", "name": "Asesor Laboral (demo)", "email": "TU_EMAIL+laboral@gmail.com" },
     { "category": "contabilidad", "description": "Facturas, balances, cuentas anuales, asientos", "name": "Asesor Contable (demo)", "email": "TU_EMAIL+contabilidad@gmail.com" }
   ],
-  "fallback": { "name": "Recepción (demo)", "email": "TU_EMAIL+recepcion@gmail.com" }
+  "recepcion": { "name": "Recepción (demo)", "email": "TU_EMAIL+recepcion@gmail.com" }
 }
 ```
 
@@ -83,8 +83,8 @@ Eres el sistema de clasificación de una gestoría. Dado un mensaje de un client
 (en castellano o catalán), clasifícalo en UNA de estas categorías:
 {{categories}}
 
-Si el mensaje no encaja claramente en ninguna categoría, usa "fallback".
-Si el mensaje incluye una imagen o PDF sin texto, clasifica como "fallback"
+Si el mensaje no encaja claramente en ninguna categoría, usa "recepcion".
+Si el mensaje incluye una imagen o PDF sin texto, clasifica como "recepcion"
 con resumen "Documento adjunto sin texto — requiere revisión manual".
 
 Responde SOLO con un JSON: {"categoria": "...", "resumen": "..."}
@@ -295,7 +295,7 @@ Servidor local (Node.js) + **ngrok** para exponer el webhook a Meta. Sin coste.
 |---|---|
 | Bidireccionalidad | **No.** Solo auto-reply al cliente + forward al asesor. |
 | Número WhatsApp | Número de prueba de Meta (sandbox). |
-| Categorías y asesores | Simulados: fiscal, laboral, contabilidad + fallback. Aliases de Gmail. |
+| Categorías y asesores | Simulados: fiscal, laboral, contabilidad + recepcion. Aliases de Gmail. |
 | Hosting | **Local + ngrok** para desarrollo. Railway/VPS cuando se pase a producción. |
 | Datos reales | **Ninguno.** Todo simulado para prueba de concepto. |
 
@@ -307,3 +307,47 @@ Servidor local (Node.js) + **ngrok** para exponer el webhook a Meta. Sin coste.
 4. Credenciales SMTP del dominio de la gestoría
 5. Deploy en Railway o VPS
 6. Enriquecer emails con metadata del cliente (NIF, empresa, tipo, notas) desde base de datos/CRM de la gestoría
+
+---
+
+## 12. Mejoras implementadas (post-POC)
+
+### Mejora 1: Agrupación de emails por ventana de contexto
+
+**Problema:** Cada mensaje generaba un email inmediato al asesor. Si el cliente enviaba texto + imagen en 5 segundos, el asesor recibía 2 emails separados.
+
+**Solución:** Cola de emails en base de datos con procesador periódico.
+
+**Flujo:**
+```
+12:00:00 - Mensaje texto  → Guardar en BD, encolar email (pending)
+12:00:05 - Mensaje imagen → Guardar en BD, ya existe cola para este usuario
+12:00:20 - Procesador     → Detecta ventana cerrada (>15s), envía email consolidado
+```
+
+**Archivos modificados:**
+- `src/db.ts` — nueva tabla `email_queue` y queries de agrupación
+- `src/webhook.ts` — encola en lugar de enviar directamente
+- `src/email.ts` — función `buildConsolidatedEmail()` para múltiples mensajes
+- `src/email-processor.ts` — nuevo módulo que procesa la cola cada 10s
+- `src/index.ts` — inicia el procesador al arrancar
+
+**Resultado:** El asesor recibe UN email con todos los mensajes del cliente agrupados.
+
+---
+
+## 13. Mejoras futuras (pendientes de implementar)
+
+### Mejoras del mensaje de feedback al usuario en WhatsApp
+
+Actualmente el auto-reply es genérico: _"Hemos recibido tu consulta. Tu asesor [Nombre] te contactará en breve."_
+
+**Posibles mejoras:**
+
+1. **Mensaje personalizado por categoría** — texto diferente para fiscal, laboral, contabilidad
+2. **Incluir resumen de la IA** — confirmar al cliente qué se ha entendido de su consulta
+3. **Tiempo estimado de respuesta** — según horario laboral o carga del asesor
+4. **Número de referencia** — para que el cliente pueda hacer seguimiento
+5. **Confirmación de adjuntos** — indicar cuántos archivos se han recibido correctamente
+6. **Mensajes en catalán/castellano** — detectar idioma del cliente y responder en el mismo
+7. **Uso del nombre del cliente** — personalizar el saludo con el nombre del contacto (ej: "Hola Dani, hemos recibido...")

@@ -9,7 +9,7 @@ export interface Advisor {
 
 export interface AdvisorsConfig {
   advisors: Advisor[];
-  fallback: { name: string; email: string };
+  recepcion: { name: string; email: string };
 }
 
 const baseEmail = config.baseEmail;
@@ -35,7 +35,7 @@ export const advisorsConfig: AdvisorsConfig = {
       email: `${baseEmail}+contabilidad@gmail.com`,
     },
   ],
-  fallback: {
+  recepcion: {
     name: 'Recepción (demo)',
     email: `${baseEmail}+recepcion@gmail.com`,
   },

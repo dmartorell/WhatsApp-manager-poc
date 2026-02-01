@@ -5,15 +5,14 @@ import {
   insertMessage,
   messageExists,
   updateMessageReply,
-  updateMessageEmail,
   updateMessageError,
-  updateMessageMedia,
   getRecentMessageFromUser,
   getRecentMediaWithoutText,
   updateMessageClassification,
+  enqueueEmail,
 } from './db.js';
 import { sendTextMessage, buildAutoReply, downloadAndSaveMedia, DownloadedMedia } from './whatsapp.js';
-import { forwardMessageToAdvisor, isEmailConfigured } from './email.js';
+import { isEmailConfigured } from './email.js';
 
 const CONTEXT_WINDOW_SECONDS = 15;
 
@@ -184,32 +183,10 @@ webhook.post('/webhook', async (c) => {
         console.log('⏭️  Auto-respuesta omitida (contexto reciente)');
       }
 
-      // Enviar email al asesor
+      // Encolar email para envío consolidado
       if (isEmailConfigured()) {
-        console.log('📧 Enviando email al asesor...');
-        const attachments = downloadedMedia
-          ? [{
-              filename: downloadedMedia.filename,
-              path: downloadedMedia.filePath,
-              contentType: downloadedMedia.mimeType,
-            }]
-          : undefined;
-
-        const emailSent = await forwardMessageToAdvisor({
-          advisorEmail,
-          advisorName,
-          clientPhone: from,
-          clientName: fromName,
-          category,
-          summary,
-          messageText: contentText || undefined,
-          attachments,
-        });
-
-        if (emailSent) {
-          updateMessageEmail(waMessageId);
-          console.log('📧 Email enviado al asesor');
-        }
+        enqueueEmail(from, advisorEmail);
+        console.log('📬 Email encolado para envío consolidado');
       } else {
         console.log('⏭️  Email omitido (SMTP no configurado)');
       }

@@ -132,7 +132,7 @@ T'envio les factures del mes per comptabilitzar
 
 ---
 
-## Fallback (Recepción - consultas generales o ambiguas)
+## Recepción (consultas generales o ambiguas)
 
 ```
 Hola, buenos días
