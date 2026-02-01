@@ -4,6 +4,7 @@ import { config } from './config.js';
 export const webhook = new Hono();
 
 // GET /webhook - Verificación de Meta
+
 webhook.get('/webhook', (c) => {
   const mode = c.req.query('hub.mode');
   const token = c.req.query('hub.verify_token');
