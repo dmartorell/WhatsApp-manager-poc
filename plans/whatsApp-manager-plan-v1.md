@@ -218,21 +218,22 @@ Servidor local (Node.js) + **ngrok** para exponer el webhook a Meta. Sin coste.
 **Antes de empezar necesitas tener:**
 
 - [x] **Fase 1 completada** y funcionando
-- [ ] **Cuenta en Anthropic** creada en [console.anthropic.com](https://console.anthropic.com/)
-- [ ] **API key de Anthropic** generada
-- [ ] **Créditos en Anthropic** (~$5 es suficiente para meses de pruebas)
-- [ ] De Anthropic, anotar:
+- [x] **Cuenta en Anthropic** creada en [console.anthropic.com](https://console.anthropic.com/)
+- [x] **API key de Anthropic** generada
+- [x] **Créditos en Anthropic** (~$5 es suficiente para meses de pruebas)
+- [x] De Anthropic, anotar:
   - `ANTHROPIC_API_KEY` — tu clave de API
 
 **Tareas:**
 
-- [ ] Crear `config/advisors.json` con asesores simulados
-- [ ] Implementar `classifier.ts` — llamada a Claude Haiku con el prompt de clasificación
-- [ ] Implementar `db.ts` — crear tabla SQLite y guardar mensajes
-- [ ] Implementar auto-respuesta al cliente vía Meta API
-- [ ] Probar: enviar mensaje → recibir clasificación en consola + auto-reply en tu móvil + registro en SQLite
+- [x] Crear `src/advisors.ts` con asesores simulados (migrado de JSON a TypeScript)
+- [x] Implementar `classifier.ts` — llamada a Claude Haiku con el prompt de clasificación
+- [x] Implementar `db.ts` — crear tabla SQLite y guardar mensajes
+- [x] Implementar auto-respuesta al cliente vía Meta API
+- [x] Implementar contexto temporal (15 seg) para agrupar mensajes del mismo usuario
+- [x] Probar: enviar mensaje → recibir clasificación en consola + auto-reply en tu móvil + registro en SQLite
 
-**Resultado**: envías "Necesito presentar el IVA del trimestre" → recibes auto-reply en tu móvil → en consola ves `{ categoria: "fiscal", resumen: "..." }` → registro guardado en SQLite.
+**Resultado**: ✅ envías "Necesito presentar el IVA del trimestre" → recibes auto-reply en tu móvil → en consola ves `{ categoria: "fiscal", resumen: "..." }` → registro guardado en SQLite.
 
 ---
 
@@ -242,7 +243,7 @@ Servidor local (Node.js) + **ngrok** para exponer el webhook a Meta. Sin coste.
 
 **Antes de empezar necesitas tener:**
 
-- [ ] **Fase 2 completada** y funcionando
+- [x] **Fase 2 completada** y funcionando
 - [ ] **Una de estas dos opciones de email configurada:**
   - **Opción A — Ethereal** (no envía emails reales, solo para ver el resultado): Generar credenciales en [ethereal.email](https://ethereal.email/create)
   - **Opción B — Gmail** (emails llegan de verdad a tu buzón): Necesitas una [App Password de Google](https://myaccount.google.com/apppasswords) (requiere 2FA activado en tu cuenta)

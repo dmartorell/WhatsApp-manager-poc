@@ -54,8 +54,7 @@ Ver `.env.example` para la lista completa. Principales:
 - `ANTHROPIC_API_KEY` - API key de Claude (Fase 2)
 - `SMTP_*` - Configuración de email (Fase 3)
 
-## Estado actual
+## Convenciones de código
 
-- **Fase 1 ✅**: Webhook básico funcionando
-- **Fase 2 🔲**: Clasificación IA + auto-respuesta
-- **Fase 3 🔲**: Reenvío por email + multimedia
+- **No usar operador non-null assertion (`!`)** — usar validación explícita con error descriptivo
+- Formateo automático con ESLint (ver `.vscode/settings.json`)
