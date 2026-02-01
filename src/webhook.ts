@@ -5,12 +5,15 @@ import {
   insertMessage,
   messageExists,
   updateMessageReply,
+  updateMessageEmail,
   updateMessageError,
+  updateMessageMedia,
   getRecentMessageFromUser,
   getRecentMediaWithoutText,
   updateMessageClassification,
 } from './db.js';
-import { sendTextMessage, buildAutoReply } from './whatsapp.js';
+import { sendTextMessage, buildAutoReply, downloadAndSaveMedia, DownloadedMedia } from './whatsapp.js';
+import { forwardMessageToAdvisor, isEmailConfigured } from './email.js';
 
 const CONTEXT_WINDOW_SECONDS = 15;
 
@@ -60,16 +63,31 @@ webhook.post('/webhook', async (c) => {
     console.log(`📝 Tipo: ${messageType}`);
 
     let contentText = '';
+    let mediaId: string | null = null;
+    let downloadedMedia: DownloadedMedia | null = null;
 
     if (messageType === 'text') {
       contentText = message.text.body;
       console.log(`💬 Texto: ${contentText}`);
     } else if (messageType === 'image') {
       contentText = message.image.caption || '';
-      console.log(`🖼️  Imagen recibida (ID: ${message.image.id})`);
+      mediaId = message.image.id;
+      console.log(`🖼️  Imagen recibida (ID: ${mediaId})`);
     } else if (messageType === 'document') {
       contentText = message.document.caption || '';
-      console.log(`📄 Documento recibido (ID: ${message.document.id})`);
+      mediaId = message.document.id;
+      console.log(`📄 Documento recibido (ID: ${mediaId})`);
+    }
+
+    // Descargar multimedia si existe
+    if (mediaId) {
+      console.log('⬇️  Descargando multimedia...');
+      downloadedMedia = await downloadAndSaveMedia(mediaId, waMessageId);
+      if (downloadedMedia) {
+        console.log(`✅ Multimedia descargado: ${downloadedMedia.filename}`);
+      } else {
+        console.log('⚠️  No se pudo descargar el multimedia');
+      }
     }
 
     try {
@@ -146,6 +164,7 @@ webhook.post('/webhook', async (c) => {
         from_name: fromName,
         content_type: messageType,
         content_text: contentText,
+        media_url: downloadedMedia?.filePath,
         category: category,
         summary: summary,
         assigned_to: advisorEmail,
@@ -163,6 +182,36 @@ webhook.post('/webhook', async (c) => {
         }
       } else {
         console.log('⏭️  Auto-respuesta omitida (contexto reciente)');
+      }
+
+      // Enviar email al asesor
+      if (isEmailConfigured()) {
+        console.log('📧 Enviando email al asesor...');
+        const attachments = downloadedMedia
+          ? [{
+              filename: downloadedMedia.filename,
+              path: downloadedMedia.filePath,
+              contentType: downloadedMedia.mimeType,
+            }]
+          : undefined;
+
+        const emailSent = await forwardMessageToAdvisor({
+          advisorEmail,
+          advisorName,
+          clientPhone: from,
+          clientName: fromName,
+          category,
+          summary,
+          messageText: contentText || undefined,
+          attachments,
+        });
+
+        if (emailSent) {
+          updateMessageEmail(waMessageId);
+          console.log('📧 Email enviado al asesor');
+        }
+      } else {
+        console.log('⏭️  Email omitido (SMTP no configurado)');
       }
     } catch (error) {
       console.error('❌ Error procesando mensaje:', error);

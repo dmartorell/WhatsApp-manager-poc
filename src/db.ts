@@ -132,3 +132,8 @@ export function updateMessageClassification(waMessageId: string, category: strin
   const stmt = db.prepare('UPDATE messages SET category = ?, summary = ?, assigned_to = ? WHERE wa_message_id = ?');
   stmt.run(category, summary, assignedTo, waMessageId);
 }
+
+export function updateMessageMedia(waMessageId: string, mediaUrl: string): void {
+  const stmt = db.prepare('UPDATE messages SET media_url = ? WHERE wa_message_id = ?');
+  stmt.run(mediaUrl, waMessageId);
+}

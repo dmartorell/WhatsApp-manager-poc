@@ -256,14 +256,14 @@ Servidor local (Node.js) + **ngrok** para exponer el webhook a Meta. Sin coste.
 
 **Tareas:**
 
-- [ ] Implementar `email.ts` — envío con Nodemailer
-- [ ] Implementar descarga de multimedia (imágenes/PDFs) vía Meta API
-- [ ] Adjuntar archivos multimedia al email
-- [ ] Implementar `rules.ts` — mapeo categoría → asesor → email destino
-- [ ] Manejo de errores y reintentos
-- [ ] Probar flujo completo: mensaje de WhatsApp → clasificación → auto-reply → email al asesor correcto con adjuntos
+- [x] Implementar `email.ts` — envío con Nodemailer
+- [x] Implementar descarga de multimedia (imágenes/PDFs) vía Meta API
+- [x] Adjuntar archivos multimedia al email
+- [x] Implementar `rules.ts` — mapeo categoría → asesor → email destino (ya existía en classifier.ts)
+- [x] Manejo de errores y reintentos
+- [x] Probar flujo completo: mensaje de WhatsApp → clasificación → auto-reply → email al asesor correcto con adjuntos
 
-**Resultado**: envías "Adjunto factura del proveedor" + foto → recibes auto-reply → en tu buzón de Gmail (o en Ethereal) llega un email a `TU_EMAIL+contabilidad@gmail.com` con la foto adjunta y el resumen de la IA.
+**Resultado**: ✅ envías "Adjunto factura del proveedor" + foto → recibes auto-reply → en tu buzón de Gmail llega un email a `TU_EMAIL+contabilidad@gmail.com` con la foto adjunta y el resumen de la IA.
 
 ---
 
@@ -306,3 +306,4 @@ Servidor local (Node.js) + **ngrok** para exponer el webhook a Meta. Sin coste.
 3. Texto exacto de auto-respuesta al cliente
 4. Credenciales SMTP del dominio de la gestoría
 5. Deploy en Railway o VPS
+6. Enriquecer emails con metadata del cliente (NIF, empresa, tipo, notas) desde base de datos/CRM de la gestoría
