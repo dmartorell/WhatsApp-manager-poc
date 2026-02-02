@@ -102,14 +102,17 @@ whatsapp-manager/
 ├── config/
 │   └── advisors.json         # Categorías, asesores y emails (editable)
 ├── src/
-│   ├── index.ts              # Entry point, Hono server
+│   ├── index.ts              # Entry point, Hono server + dashboard
 │   ├── config.ts             # Variables de entorno (tipadas)
+│   ├── constants.ts          # Magic numbers y strings
+│   ├── schemas.ts            # Zod schemas para validación
 │   ├── webhook.ts            # Rutas GET (verificación) y POST (mensajes)
 │   ├── whatsapp.ts           # Cliente Meta API (enviar mensajes, descargar media)
 │   ├── classifier.ts         # Clasificación con Claude API
 │   ├── email.ts              # Envío de emails con Nodemailer
+│   ├── email-processor.ts    # Procesador de cola de emails
 │   ├── db.ts                 # SQLite — registro de mensajes
-│   └── rules.ts              # Mapeo categoría → asesor + lógica de enrutamiento
+│   └── advisors.ts           # Configuración de asesores
 ├── media/                    # Archivos descargados (gitignored)
 ├── .env.example              # Template de variables de entorno
 ├── package.json
@@ -155,7 +158,7 @@ Cuando el cliente envía una imagen o PDF:
 3. **Adjuntar** al email con Nodemailer (MIME attachment)
 4. **Incluir caption** si lo tiene como cuerpo del email
 
-Formatos soportados: `image/jpeg`, `image/png`, `application/pdf`.
+Formatos soportados: `image/jpeg`, `image/png`, `image/webp`, `application/pdf`, `audio/ogg`, `audio/mpeg`, `video/mp4`.
 
 ---
 
@@ -336,6 +339,31 @@ Servidor local (Node.js) + **ngrok** para exponer el webhook a Meta. Sin coste.
 - `src/index.ts` — inicia el procesador al arrancar
 
 **Resultado:** El asesor recibe UN email con todos los mensajes del cliente agrupados.
+
+---
+
+### Mejora 2: Validación con Zod + soporte audio/video
+
+**Problema:** El código usaba type assertions (`as Type`) y non-null assertions (`!`) sin validar datos externos (webhook Meta, API Claude, Graph API). Además, los mensajes de audio y video no se procesaban.
+
+**Solución:** Validación runtime con Zod schemas + soporte completo multimedia.
+
+**Cambios principales:**
+- `src/schemas.ts` (nuevo) — Schemas Zod para webhook, clasificación, media, DB
+- `src/constants.ts` (nuevo) — Magic numbers/strings extraídos
+- `src/webhook.ts` — Validación payload + soporte audio/video
+- `src/whatsapp.ts` — Fix MIME types con codec info (`audio/ogg; codecs=opus`)
+- `src/email.ts` — contentType explícito en adjuntos + truncar nombres largos
+- `src/db.ts` — Validación runtime de queries
+- `src/config.ts` — parseInt seguro
+
+**Archivos multimedia soportados:**
+- Imágenes: jpg, png, webp
+- Documentos: pdf
+- Audio: ogg, mp3, aac, amr
+- Video: mp4, 3gp
+
+**Resultado:** Código type-safe, audio/video se descargan y adjuntan correctamente, nombres largos truncados en emails.
 
 ---
 

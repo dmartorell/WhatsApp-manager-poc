@@ -1,6 +1,6 @@
 # Diagrama de Flujo - WhatsApp Manager
 
-> **Última actualización:** Post-refactor de clasificación diferida y múltiples categorías
+> **Última actualización:** Soporte audio/video + validación Zod
 
 ## Flujo Principal del Sistema
 
@@ -14,7 +14,7 @@ flowchart TB
     subgraph WEBHOOK["🔗 Webhook POST /webhook"]
         WH_POST["Recibir mensaje"]
         DEDUPE{{"¿Duplicado?"}}
-        PARSE["Extraer datos:<br/>• tipo (text/image/document)<br/>• contenido/caption<br/>• mediaId"]
+        PARSE["Extraer datos:<br/>• tipo (text/image/document/audio/video)<br/>• contenido/caption<br/>• mediaId"]
         DOWNLOAD["Descargar multimedia<br/>a /media/{msgId}.ext"]
         SAVE_RAW["💾 Guardar mensaje<br/>SIN CLASIFICAR<br/>category = NULL"]
         ENQUEUE["📬 Encolar para<br/>procesamiento"]
@@ -346,7 +346,7 @@ erDiagram
         text wa_message_id UK "ID de Meta"
         text from_phone "Teléfono cliente"
         text from_name "Nombre contacto"
-        text content_type "text|image|document"
+        text content_type "text|image|document|audio|video"
         text content_text "Texto o caption"
         text media_url "Ruta local archivo"
         text category "NULL → 'fiscal, laboral'"
@@ -419,21 +419,27 @@ graph LR
         TEXT["💬 text<br/>message.text.body"]
         IMAGE["🖼️ image<br/>message.image.id<br/>message.image.caption"]
         DOC["📄 document<br/>message.document.id<br/>message.document.caption"]
+        AUDIO["🎵 audio<br/>message.audio.id"]
+        VIDEO["🎬 video<br/>message.video.id<br/>message.video.caption"]
     end
 
     subgraph EXTRACCION["📥 Extracción"]
         TEXT --> T_CONTENT["contentText = body<br/>mediaId = null"]
         IMAGE --> I_CONTENT["contentText = caption<br/>mediaId = id"]
         DOC --> D_CONTENT["contentText = caption<br/>mediaId = id"]
+        AUDIO --> A_CONTENT["contentText = ''<br/>mediaId = id"]
+        VIDEO --> V_CONTENT["contentText = caption<br/>mediaId = id"]
     end
 
     subgraph DESCARGA["💾 Descarga Media"]
         I_CONTENT --> DOWNLOAD
         D_CONTENT --> DOWNLOAD
+        A_CONTENT --> DOWNLOAD
+        V_CONTENT --> DOWNLOAD
 
         DOWNLOAD["downloadAndSaveMedia()"]
 
-        DOWNLOAD --> EXT["Extensiones:<br/>.jpg, .png, .pdf,<br/>.ogg, .mp4"]
+        DOWNLOAD --> EXT["Extensiones:<br/>.jpg, .png, .webp<br/>.pdf<br/>.ogg, .mp3, .aac<br/>.mp4, .3gp"]
     end
 
     subgraph ALMACEN["📁 Almacenamiento"]
