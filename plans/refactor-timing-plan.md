@@ -49,7 +49,7 @@ Msg 2 "quiero pagar IVA" → Guardar (sin clasificar)
 | `src/webhook.ts` | Simplificado: solo guarda mensajes sin clasificar |
 | `src/classifier.ts` | Devuelve array de categorías, lógica de fallback |
 | `src/email-processor.ts` | Clasificación diferida, envío a múltiples asesores |
-| `src/db.ts` | Nuevas funciones: `classifyUserMessages`, `hasUserReceivedReply` |
+| `src/db.ts` | Nuevas funciones: `classifyUserMessages`, `hasUserReceivedReply`, `classification_id` para conteo correcto |
 | `src/whatsapp.ts` | `buildAutoReply` acepta array de categorías |
 | `src/email.ts` | Badges de categoría con colores, fecha/hora en español |
 | `src/index.ts` | UI mejorada: agrupación, hover de grupo, formato fecha |
@@ -102,16 +102,18 @@ Msg 2 "quiero pagar IVA" → Guardar (sin clasificar)
          │      → solo fiscal            │
          │    - fiscal + laboral         │
          │      → ambos                  │
+         │ 4. Generar classification_id  │
+         │    (UUID único por grupo)     │
          └───────────────┬───────────────┘
                          │
          ┌───────────────┴───────────────┐
-         │ 4. Enviar auto-respuesta      │
+         │ 5. Enviar auto-respuesta      │
          │    • 1 categoría: "área X"    │
          │    • múltiples: "equipo"      │
          └───────────────┬───────────────┘
                          │
          ┌───────────────┴───────────────┐
-         │ 5. Enviar email consolidado   │
+         │ 6. Enviar email consolidado   │
          │    a CADA asesor relevante    │
          └───────────────────────────────┘
 ```
@@ -122,18 +124,19 @@ Msg 2 "quiero pagar IVA" → Guardar (sin clasificar)
 
 ### Tabla de mensajes (`/messages`)
 
-- **Agrupación visual**: Mensajes del mismo grupo comparten celdas (categoría, resumen, reply, email)
+- **Agrupación visual por `classification_id`**: Mensajes clasificados juntos (mismo UUID) comparten celdas (categoría, resumen, reply, email). Mensajes con mismo summary pero clasificados por separado NO se agrupan.
 - **Hover de grupo**: Al pasar el mouse sobre cualquier fila, se ilumina todo el grupo
 - **Separador**: Fila vacía entre grupos
 - **Badges de categoría**: Colores por tipo (fiscal=azul, laboral=naranja, contabilidad=verde, recepcion=rosa)
-- **Formato fecha**: DD/MM/YY HH:MM:SS
+- **Formato fecha**: DD/MM/YY HH:MM:SS (hora local del sistema)
 - **Clip para adjuntos**: 📎 en lugar de "-" para mensajes multimedia sin texto
+- **Hover en botón Refrescar**: Color más oscuro al pasar el mouse
 
 ### Emails
 
 - **Badges de categoría** con los mismos colores que la web
-- **Fecha en español**: "Jueves, 12 de marzo"
-- **Hora en 24h**: "22:57"
+- **Fecha en español con año**: "Lunes, 2 de febrero de 2026"
+- **Hora en 24h**: "14:30" (hora local del sistema)
 - **Múltiples categorías**: Se muestran como badges separados
 
 ---
@@ -157,7 +160,36 @@ RESULTADO: 1 auto-respuesta + 1 email con 3 mensajes
 
 ---
 
+## Conteo de Clasificaciones IA
+
+### Problema Original
+
+El conteo de "Clasificaciones IA" en la UI web contaba mensajes con `category IS NOT NULL`, lo que resultaba en un número inflado cuando múltiples mensajes se clasificaban juntos.
+
+**Ejemplo:** 3 mensajes clasificados juntos → contaba como 3 clasificaciones (incorrecto)
+
+### Solución Implementada
+
+Se añadió el campo `classification_id` (UUID) a la tabla `messages`:
+
+- Cuando varios mensajes se clasifican juntos, todos reciben el **mismo UUID**
+- El conteo correcto es: `COUNT(DISTINCT classification_id)`
+
+**Ejemplo:** 3 mensajes con el mismo `classification_id` → cuenta como 1 clasificación (correcto)
+
+### Archivos Modificados
+
+| Archivo | Cambio |
+|---------|--------|
+| `src/db.ts` | Nueva columna `classification_id`, migración automática, conteo con `COUNT(DISTINCT)`, `getAllMessages` incluye `classification_id` |
+| `src/email-processor.ts` | Genera UUID con `crypto.randomUUID()` al clasificar |
+| `src/index.ts` | Agrupación visual por `classification_id` en lugar de `summary` |
+| `src/email.ts` | Fecha con año, hora local del sistema |
+
+---
+
 ## Fecha de implementación
 
 - **Inicio**: 2026-02-01 22:30
 - **Completado**: 2026-02-02 00:30
+- **Corrección conteo y agrupación visual**: 2026-02-02 01:20

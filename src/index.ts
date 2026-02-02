@@ -6,6 +6,18 @@ import { webhook } from './webhook.js';
 import { getAllMessages, getUsageStats } from './db.js';
 import { startEmailProcessor } from './email-processor.js';
 
+// Formatear fecha/hora (hora local del sistema)
+function formatDateTime(dateString: string): string {
+  const date = new Date(dateString.replace(' ', 'T') + 'Z'); // SQLite guarda UTC
+  const d = date.getDate().toString().padStart(2, '0');
+  const m = (date.getMonth() + 1).toString().padStart(2, '0');
+  const y = date.getFullYear().toString().slice(2);
+  const hh = date.getHours().toString().padStart(2, '0');
+  const mm = date.getMinutes().toString().padStart(2, '0');
+  const ss = date.getSeconds().toString().padStart(2, '0');
+  return `${d}/${m}/${y} ${hh}:${mm}:${ss}`;
+}
+
 const app = new Hono();
 
 // Middleware de logging
@@ -44,7 +56,8 @@ app.get('/messages', (c) => {
     .status { font-size: 18px; }
     .error { color: #d32f2f; font-size: 12px; }
     .refresh { margin-bottom: 20px; }
-    .refresh a { background: #5b8def; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; }
+    .refresh a { background: #5b8def; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; transition: background 0.2s; }
+    .refresh a:hover { background: #4a7cd8; }
     .stats-container { display: flex; gap: 15px; margin-bottom: 20px; }
     .stat-card { background: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
     .stat-card h3 { margin: 0 0 5px 0; font-size: 14px; color: #666; }
@@ -86,17 +99,19 @@ app.get('/messages', (c) => {
       <th>Email</th>
     </tr>
     ${(() => {
-      type Message = { id: number; created_at: string; from_name: string; from_phone: string; content_type: string; content_text: string; category: string | null; summary: string | null; wa_reply_sent: number; email_sent: number; error: string };
+      type Message = { id: number; created_at: string; from_name: string; from_phone: string; content_type: string; content_text: string; category: string | null; summary: string | null; classification_id: string | null; wa_reply_sent: number; email_sent: number; error: string };
       const msgs = messages as Message[];
 
-      // Agrupar mensajes por summary + from_phone (mensajes con mismo resumen del mismo usuario = mismo grupo)
+      // Agrupar mensajes por classification_id (mensajes clasificados juntos = mismo grupo)
       interface Group { messages: Message[]; summary: string | null; }
       const groups: Group[] = [];
       let currentGroup: Group | null = null;
 
       for (const m of msgs) {
-        const groupKey = `${m.from_phone}|${m.summary || 'pending'}`;
-        if (!currentGroup || `${currentGroup.messages[0].from_phone}|${currentGroup.summary || 'pending'}` !== groupKey) {
+        // Usar classification_id para agrupar; si es null, cada mensaje es su propio grupo
+        const groupKey = m.classification_id || `single_${m.id}`;
+        const currentKey = currentGroup?.messages[0].classification_id || `single_${currentGroup?.messages[0].id}`;
+        if (!currentGroup || currentKey !== groupKey) {
           currentGroup = { messages: [m], summary: m.summary };
           groups.push(currentGroup);
         } else {
@@ -141,7 +156,7 @@ app.get('/messages', (c) => {
           html += `
     <tr data-group="${groupIndex}">
       <td>${m.id}</td>
-      <td>${(() => { const [date, time] = m.created_at.split(' '); const [y, mo, d] = date.split('-'); return `${d}/${mo}/${y.slice(2)} ${time}`; })()}</td>
+      <td>${formatDateTime(m.created_at)}</td>
       <td>${m.from_name || m.from_phone}</td>
       <td>${m.content_type}</td>
       <td>${m.content_text || (m.content_type === 'image' || m.content_type === 'document' ? '📎' : '-')}</td>

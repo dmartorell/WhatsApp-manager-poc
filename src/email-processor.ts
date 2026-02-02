@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import {
   getPendingEmails,
   getUnsentMessagesForUser,
@@ -71,7 +72,8 @@ export async function processEmailQueue(): Promise<void> {
 
       // Actualizar todos los mensajes con la clasificación
       const messageIds = messages.map((m) => m.id);
-      classifyUserMessages(messageIds, categoryString, summary, advisorEmailString);
+      const classificationId = randomUUID();
+      classifyUserMessages(messageIds, categoryString, summary, advisorEmailString, classificationId);
 
       // Actualizar los mensajes en memoria para el email
       const classifiedMessages = messages.map((m) => ({

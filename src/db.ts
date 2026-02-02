@@ -6,20 +6,21 @@ const db = new Database(join(process.cwd(), 'messages.db'));
 // Crear tablas si no existen
 db.exec(`
   CREATE TABLE IF NOT EXISTS messages (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    wa_message_id TEXT UNIQUE,
-    from_phone    TEXT NOT NULL,
-    from_name     TEXT,
-    content_type  TEXT NOT NULL,
-    content_text  TEXT,
-    media_url     TEXT,
-    category      TEXT,
-    summary       TEXT,
-    assigned_to   TEXT,
-    email_sent    INTEGER DEFAULT 0,
-    wa_reply_sent INTEGER DEFAULT 0,
-    created_at    TEXT DEFAULT (datetime('now')),
-    error         TEXT
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    wa_message_id     TEXT UNIQUE,
+    from_phone        TEXT NOT NULL,
+    from_name         TEXT,
+    content_type      TEXT NOT NULL,
+    content_text      TEXT,
+    media_url         TEXT,
+    category          TEXT,
+    summary           TEXT,
+    assigned_to       TEXT,
+    classification_id TEXT,
+    email_sent        INTEGER DEFAULT 0,
+    wa_reply_sent     INTEGER DEFAULT 0,
+    created_at        TEXT DEFAULT (datetime('now')),
+    error             TEXT
   )
 `);
 
@@ -34,6 +35,12 @@ db.exec(`
     error         TEXT
   )
 `);
+
+// Migración: añadir classification_id si no existe
+const columns = db.prepare("PRAGMA table_info(messages)").all() as { name: string }[];
+if (!columns.some((c) => c.name === 'classification_id')) {
+  db.exec('ALTER TABLE messages ADD COLUMN classification_id TEXT');
+}
 
 export interface MessageRecord {
   wa_message_id: string;
@@ -111,7 +118,7 @@ export function getRecentMessageFromUser(phone: string, seconds: number): Recent
 
 export function getAllMessages(limit: number = 50): unknown[] {
   const stmt = db.prepare(`
-    SELECT id, from_phone, from_name, content_type, content_text, category, summary, assigned_to, wa_reply_sent, email_sent, created_at, error
+    SELECT id, from_phone, from_name, content_type, content_text, category, summary, assigned_to, classification_id, wa_reply_sent, email_sent, created_at, error
     FROM messages
     ORDER BY created_at DESC
     LIMIT ?
@@ -130,13 +137,10 @@ export function getUsageStats(): UsageStats {
   // Contar mensajes totales
   const totalMessages = (db.prepare('SELECT COUNT(*) as count FROM messages').get() as { count: number }).count;
 
-  // Contar clasificaciones (mensajes que fueron clasificados por IA, no los que heredaron contexto)
-  // Los que heredan contexto tienen summary que empieza por "Mensaje adicional:" o "Adjunto"
+  // Contar clasificaciones únicas (cada classification_id = 1 llamada a Claude)
   const classificationsCount = (db.prepare(`
-    SELECT COUNT(*) as count FROM messages
-    WHERE category IS NOT NULL
-      AND summary NOT LIKE 'Mensaje adicional:%'
-      AND summary NOT LIKE 'Adjunto%'
+    SELECT COUNT(DISTINCT classification_id) as count FROM messages
+    WHERE classification_id IS NOT NULL
   `).get() as { count: number }).count;
 
   // Estimación de coste por clasificación:
@@ -334,15 +338,16 @@ export function classifyUserMessages(
   category: string,
   summary: string,
   assignedTo: string,
+  classificationId: string,
 ): void {
   if (messageIds.length === 0) return;
   const placeholders = messageIds.map(() => '?').join(',');
   const stmt = db.prepare(`
     UPDATE messages
-    SET category = ?, summary = ?, assigned_to = ?
+    SET category = ?, summary = ?, assigned_to = ?, classification_id = ?
     WHERE id IN (${placeholders})
   `);
-  stmt.run(category, summary, assignedTo, ...messageIds);
+  stmt.run(category, summary, assignedTo, classificationId, ...messageIds);
 }
 
 export function hasUserReceivedReply(fromPhone: string): boolean {

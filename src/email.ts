@@ -68,21 +68,27 @@ export function isEmailConfigured(): boolean {
   return Boolean(config.smtpHost && config.smtpUser && config.smtpPassword);
 }
 
-// Formateo de fecha y hora en español
+// Formateo de fecha y hora en español (hora local del sistema)
+function parseDate(dateString: string): Date {
+  // SQLite guarda en UTC con datetime('now'), añadimos 'Z' para parsear como UTC
+  return new Date(dateString.replace(' ', 'T') + 'Z');
+}
+
 function formatDateSpanish(dateString: string): string {
   const days = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
   const months = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 
-  const date = new Date(dateString.replace(' ', 'T'));
+  const date = parseDate(dateString);
   const dayName = days[date.getDay()];
   const day = date.getDate();
   const month = months[date.getMonth()];
+  const year = date.getFullYear();
 
-  return `${dayName}, ${day} de ${month}`;
+  return `${dayName}, ${day} de ${month} de ${year}`;
 }
 
 function formatTime24h(dateString: string): string {
-  const date = new Date(dateString.replace(' ', 'T'));
+  const date = parseDate(dateString);
   const hours = date.getHours().toString().padStart(2, '0');
   const minutes = date.getMinutes().toString().padStart(2, '0');
   return `${hours}:${minutes}`;

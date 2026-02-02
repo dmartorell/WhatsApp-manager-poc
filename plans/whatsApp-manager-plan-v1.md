@@ -124,22 +124,25 @@ whatsapp-manager/
 
 ```sql
 CREATE TABLE messages (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    wa_message_id TEXT UNIQUE,           -- ID de Meta para deduplicación
-    from_phone    TEXT NOT NULL,          -- Teléfono del cliente
-    from_name     TEXT,                   -- Nombre del contacto
-    content_type  TEXT NOT NULL,          -- text | image | document
-    content_text  TEXT,                   -- Texto del mensaje (o caption)
-    media_url     TEXT,                   -- URL local del archivo descargado
-    category      TEXT,                   -- Categoría asignada por IA
-    summary       TEXT,                   -- Resumen generado por IA
-    assigned_to   TEXT,                   -- Email del asesor asignado
-    email_sent    INTEGER DEFAULT 0,      -- 1 = email enviado correctamente
-    wa_reply_sent INTEGER DEFAULT 0,      -- 1 = auto-reply enviado
-    created_at    TEXT DEFAULT (datetime('now')),
-    error         TEXT                    -- Último error si lo hubo
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    wa_message_id     TEXT UNIQUE,           -- ID de Meta para deduplicación
+    from_phone        TEXT NOT NULL,          -- Teléfono del cliente
+    from_name         TEXT,                   -- Nombre del contacto
+    content_type      TEXT NOT NULL,          -- text | image | document
+    content_text      TEXT,                   -- Texto del mensaje (o caption)
+    media_url         TEXT,                   -- URL local del archivo descargado
+    category          TEXT,                   -- Categoría asignada por IA
+    summary           TEXT,                   -- Resumen generado por IA
+    assigned_to       TEXT,                   -- Email del asesor asignado
+    classification_id TEXT,                   -- UUID que agrupa mensajes clasificados juntos
+    email_sent        INTEGER DEFAULT 0,      -- 1 = email enviado correctamente
+    wa_reply_sent     INTEGER DEFAULT 0,      -- 1 = auto-reply enviado
+    created_at        TEXT DEFAULT (datetime('now')),
+    error             TEXT                    -- Último error si lo hubo
 );
 ```
+
+> **Nota sobre `classification_id`**: Cuando varios mensajes de un usuario se clasifican juntos (ventana de contexto de 15s), todos reciben el mismo UUID. Esto permite contar clasificaciones reales con `COUNT(DISTINCT classification_id)` en lugar de contar mensajes.
 
 ---
 
