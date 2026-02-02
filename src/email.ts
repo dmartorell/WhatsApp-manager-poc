@@ -1,5 +1,42 @@
 import nodemailer from 'nodemailer';
 import { config } from './config.js';
+import { DEFAULT_ATTACHMENT_FILENAME } from './constants.js';
+
+// Detecta contentType por extensión
+function getContentType(filename: string): string | undefined {
+  const ext = filename.split('.').pop()?.toLowerCase();
+  const extToMime: Record<string, string> = {
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    png: 'image/png',
+    webp: 'image/webp',
+    pdf: 'application/pdf',
+    ogg: 'audio/ogg',
+    mp3: 'audio/mpeg',
+    aac: 'audio/aac',
+    amr: 'audio/amr',
+    mp4: 'video/mp4',
+    '3gp': 'video/3gpp',
+  };
+  return ext ? extToMime[ext] : undefined;
+}
+
+// Trunca nombres de archivo largos: "wamid.HBgL...RAA=.pdf"
+function truncateFilename(filename: string, maxLength = 20): string {
+  if (filename.length <= maxLength) return filename;
+
+  const dotIndex = filename.lastIndexOf('.');
+  const ext = dotIndex > 0 ? filename.slice(dotIndex) : '';
+  const name = dotIndex > 0 ? filename.slice(0, dotIndex) : filename;
+
+  const availableLength = maxLength - ext.length - 3; // 3 for "..."
+  if (availableLength < 4) return filename; // Too short to truncate meaningfully
+
+  const start = name.slice(0, Math.ceil(availableLength / 2));
+  const end = name.slice(-Math.floor(availableLength / 2));
+
+  return `${start}...${end}${ext}`;
+}
 
 interface EmailAttachment {
   filename: string;
@@ -229,12 +266,16 @@ export async function sendConsolidatedEmail(
   const attachments: EmailAttachment[] = [];
 
   for (const msg of messages) {
-    const filename = msg.media_url ? (msg.media_url.split('/').pop() || 'adjunto') : undefined;
+    const filename = msg.media_url
+      ? (msg.media_url.split('/').pop() || DEFAULT_ATTACHMENT_FILENAME)
+      : undefined;
+    const displayFilename = filename ? truncateFilename(filename) : undefined;
 
-    if (msg.media_url) {
+    if (msg.media_url && filename) {
       attachments.push({
-        filename: filename!,
+        filename,
         path: msg.media_url,
+        contentType: getContentType(filename),
       });
     }
 
@@ -243,14 +284,14 @@ export async function sendConsolidatedEmail(
       messageContents.push({
         text: msg.content_text,
         hasAttachment: true,
-        attachmentName: filename,
+        attachmentName: displayFilename,
       });
     } else if (msg.media_url) {
       // Solo adjunto sin texto
       messageContents.push({
-        text: `📎 ${filename}`,
+        text: `📎 ${displayFilename}`,
         hasAttachment: true,
-        attachmentName: filename,
+        attachmentName: displayFilename,
       });
     } else if (msg.content_text) {
       // Solo texto

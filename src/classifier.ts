@@ -1,5 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { advisorsConfig, AdvisorsConfig } from './advisors.js';
+import { parseClassificationResponse } from './schemas.js';
+import { DEFAULT_CATEGORY, buildClassificationPrompt } from './constants.js';
 
 const anthropic = new Anthropic();
 
@@ -13,28 +15,11 @@ interface ClassifyOptions {
 }
 
 function buildPrompt(advisors: AdvisorsConfig): string {
-  const categories = advisors.advisors
+  const categoryDescriptions = advisors.advisors
     .map((a) => `- ${a.category}: ${a.description}`)
     .join('\n');
 
-  return `Eres el sistema de clasificación de una gestoría. Dado un mensaje de un cliente
-(en castellano o catalán), identifica TODOS los temas presentes.
-
-Categorías disponibles:
-${categories}
-
-REGLAS DE CLASIFICACIÓN:
-1. Identifica TODAS las categorías que apliquen al mensaje
-2. Si el mensaje menciona varios temas (ej: "quiero pagar IVA y tengo dudas sobre una nómina"), incluye ambas categorías
-3. Usa "recepcion" SOLO para:
-   - Mensajes puramente sobre horarios, dirección, teléfono de la oficina
-   - Saludos sin contenido profesional ("hola", "buenos días")
-   - Preguntas sobre empleados específicos ("está María?")
-4. Si hay contenido profesional (fiscal/laboral/contabilidad) junto con preguntas de recepción (horarios), NO incluyas recepcion
-
-Responde SOLO con un JSON: {"categorias": ["..."], "resumen": "..."}
-- categorias: array con una o más categorías
-- resumen: frase de máximo 15 palabras describiendo la consulta principal`;
+  return buildClassificationPrompt(categoryDescriptions);
 }
 
 export async function classifyMessage(
@@ -60,19 +45,20 @@ export async function classifyMessage(
 
   const content = response.content[0];
   if (content.type !== 'text') {
-    return { categorias: ['recepcion'], resumen: 'Error al procesar respuesta' };
+    return { categorias: [DEFAULT_CATEGORY], resumen: 'Error al procesar respuesta' };
   }
 
   try {
-    const parsed = JSON.parse(content.text) as { categorias: string[]; resumen: string };
+    const jsonData = JSON.parse(content.text);
+    const parsed = parseClassificationResponse(jsonData);
 
-    // Validar que categorias sea un array
-    if (!Array.isArray(parsed.categorias) || parsed.categorias.length === 0) {
-      return { categorias: ['recepcion'], resumen: parsed.resumen || 'Consulta general' };
+    // Zod validation failed
+    if (!parsed) {
+      return { categorias: [DEFAULT_CATEGORY], resumen: 'Consulta general' };
     }
 
     // Aplicar lógica de fallback: si hay categorías específicas, eliminar recepcion
-    const specificCategories = parsed.categorias.filter((c) => c !== 'recepcion');
+    const specificCategories = parsed.categorias.filter((c) => c !== DEFAULT_CATEGORY);
     const finalCategories = specificCategories.length > 0 ? specificCategories : parsed.categorias;
 
     return {
@@ -80,7 +66,7 @@ export async function classifyMessage(
       resumen: parsed.resumen,
     };
   } catch {
-    return { categorias: ['recepcion'], resumen: 'Error al parsear clasificación' };
+    return { categorias: [DEFAULT_CATEGORY], resumen: 'Error al parsear clasificación' };
   }
 }
 

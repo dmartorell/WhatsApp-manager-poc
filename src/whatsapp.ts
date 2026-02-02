@@ -2,9 +2,10 @@ import { config } from './config.js';
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { existsSync } from 'fs';
+import { parseMediaInfo, MediaInfo, formatError } from './schemas.js';
+import { GRAPH_API_BASE_URL } from './constants.js';
 
-const WHATSAPP_API_URL = `https://graph.facebook.com/v21.0/${config.waPhoneNumberId}/messages`;
-const GRAPH_API_URL = 'https://graph.facebook.com/v21.0';
+const WHATSAPP_API_URL = `${GRAPH_API_BASE_URL}/${config.waPhoneNumberId}/messages`;
 const MEDIA_DIR = join(process.cwd(), 'media');
 
 export async function markAsRead(messageId: string): Promise<boolean> {
@@ -30,7 +31,7 @@ export async function markAsRead(messageId: string): Promise<boolean> {
 
     return true;
   } catch (error) {
-    console.error('❌ Error marcando como leído:', error);
+    console.error('❌ Error marcando como leído:', formatError(error));
     return false;
   }
 }
@@ -60,7 +61,7 @@ export async function sendTextMessage(to: string, text: string): Promise<boolean
     console.log('✅ Mensaje enviado a:', to);
     return true;
   } catch (error) {
-    console.error('❌ Error enviando mensaje:', error);
+    console.error('❌ Error enviando mensaje:', formatError(error));
     return false;
   }
 }
@@ -86,16 +87,9 @@ export function buildAutoReply(categories: string[]): string {
   return 'Hemos recibido tu consulta. Nuestro equipo te contactará lo antes posible.';
 }
 
-interface MediaInfo {
-  url: string;
-  mime_type: string;
-  sha256: string;
-  file_size: number;
-}
-
 export async function getMediaUrl(mediaId: string): Promise<MediaInfo | null> {
   try {
-    const response = await fetch(`${GRAPH_API_URL}/${mediaId}`, {
+    const response = await fetch(`${GRAPH_API_BASE_URL}/${mediaId}`, {
       headers: {
         'Authorization': `Bearer ${config.waAccessToken}`,
       },
@@ -107,10 +101,15 @@ export async function getMediaUrl(mediaId: string): Promise<MediaInfo | null> {
       return null;
     }
 
-    const data = await response.json() as MediaInfo;
-    return data;
+    const data = await response.json();
+    const mediaInfo = parseMediaInfo(data);
+    if (!mediaInfo) {
+      console.error('❌ Invalid media info response structure');
+      return null;
+    }
+    return mediaInfo;
   } catch (error) {
-    console.error('❌ Error obteniendo URL del media:', error);
+    console.error('❌ Error obteniendo URL del media:', formatError(error));
     return null;
   }
 }
@@ -132,12 +131,15 @@ export async function downloadMedia(mediaUrl: string): Promise<Buffer | null> {
     const arrayBuffer = await response.arrayBuffer();
     return Buffer.from(arrayBuffer);
   } catch (error) {
-    console.error('❌ Error descargando media:', error);
+    console.error('❌ Error descargando media:', formatError(error));
     return null;
   }
 }
 
 function getExtensionFromMimeType(mimeType: string): string {
+  // Extract base MIME type (remove codec info like "; codecs=opus")
+  const baseMime = mimeType.split(';')[0].trim();
+
   const mimeToExt: Record<string, string> = {
     'image/jpeg': '.jpg',
     'image/png': '.png',
@@ -145,9 +147,12 @@ function getExtensionFromMimeType(mimeType: string): string {
     'application/pdf': '.pdf',
     'audio/ogg': '.ogg',
     'audio/mpeg': '.mp3',
+    'audio/aac': '.aac',
+    'audio/amr': '.amr',
     'video/mp4': '.mp4',
+    'video/3gpp': '.3gp',
   };
-  return mimeToExt[mimeType] || '.bin';
+  return mimeToExt[baseMime] || '.bin';
 }
 
 export interface DownloadedMedia {

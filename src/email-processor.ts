@@ -12,9 +12,8 @@ import {
 import { sendConsolidatedEmail, isEmailConfigured } from './email.js';
 import { sendTextMessage, buildAutoReply } from './whatsapp.js';
 import { classifyMessage, getAdvisorsByCategories } from './classifier.js';
-
-const CONTEXT_WINDOW_SECONDS = 15;
-const PROCESS_INTERVAL_MS = 10000;
+import { formatError } from './schemas.js';
+import { CONTEXT_WINDOW_SECONDS, PROCESS_INTERVAL_MS } from './constants.js';
 
 let processorInterval: NodeJS.Timeout | null = null;
 
@@ -125,7 +124,7 @@ export async function processEmailQueue(): Promise<void> {
         markQueueAsFailed(queueEntry.id, 'Error enviando algunos emails');
       }
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
+      const errorMsg = formatError(error);
       markQueueAsFailed(queueEntry.id, errorMsg);
       console.error(`❌ Error procesando cola ${queueEntry.id}:`, errorMsg);
     }

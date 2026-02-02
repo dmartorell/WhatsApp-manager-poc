@@ -5,6 +5,7 @@ import { config } from './config.js';
 import { webhook } from './webhook.js';
 import { getAllMessages, getUsageStats } from './db.js';
 import { startEmailProcessor } from './email-processor.js';
+import { parseDashboardMessages, DashboardMessage } from './schemas.js';
 
 // Formatear fecha/hora (hora local del sistema)
 function formatDateTime(dateString: string): string {
@@ -99,11 +100,10 @@ app.get('/messages', (c) => {
       <th>Email</th>
     </tr>
     ${(() => {
-      type Message = { id: number; created_at: string; from_name: string; from_phone: string; content_type: string; content_text: string; category: string | null; summary: string | null; classification_id: string | null; wa_reply_sent: number; email_sent: number; error: string };
-      const msgs = messages as Message[];
+      const msgs: DashboardMessage[] = parseDashboardMessages(messages);
 
       // Agrupar mensajes por classification_id (mensajes clasificados juntos = mismo grupo)
-      interface Group { messages: Message[]; summary: string | null; }
+      interface Group { messages: DashboardMessage[]; summary: string | null; }
       const groups: Group[] = [];
       let currentGroup: Group | null = null;
 
@@ -159,7 +159,7 @@ app.get('/messages', (c) => {
       <td>${formatDateTime(m.created_at)}</td>
       <td>${m.from_name || m.from_phone}</td>
       <td>${m.content_type}</td>
-      <td>${m.content_text || (m.content_type === 'image' || m.content_type === 'document' ? '📎' : '-')}</td>
+      <td>${m.content_text || (['image', 'document', 'audio', 'video'].includes(m.content_type) ? '📎' : '-')}</td>
       ${categoryCell}
       ${summaryCell}
       ${replyCell}

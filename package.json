@@ -15,7 +15,8 @@
     "better-sqlite3": "^12.6.2",
     "dotenv": "^16.4.7",
     "hono": "^4.6.16",
-    "nodemailer": "^7.0.13"
+    "nodemailer": "^7.0.13",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
