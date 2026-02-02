@@ -7,6 +7,34 @@ const WHATSAPP_API_URL = `https://graph.facebook.com/v21.0/${config.waPhoneNumbe
 const GRAPH_API_URL = 'https://graph.facebook.com/v21.0';
 const MEDIA_DIR = join(process.cwd(), 'media');
 
+export async function markAsRead(messageId: string): Promise<boolean> {
+  try {
+    const response = await fetch(WHATSAPP_API_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${config.waAccessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        status: 'read',
+        message_id: messageId,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error('❌ Error marcando como leído:', error);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('❌ Error marcando como leído:', error);
+    return false;
+  }
+}
+
 export async function sendTextMessage(to: string, text: string): Promise<boolean> {
   try {
     const response = await fetch(WHATSAPP_API_URL, {

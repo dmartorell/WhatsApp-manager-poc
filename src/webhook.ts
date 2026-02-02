@@ -6,7 +6,7 @@ import {
   updateMessageError,
   enqueueEmail,
 } from './db.js';
-import { downloadAndSaveMedia, DownloadedMedia } from './whatsapp.js';
+import { downloadAndSaveMedia, DownloadedMedia, markAsRead } from './whatsapp.js';
 import { isEmailConfigured } from './email.js';
 
 export const webhook = new Hono();
@@ -53,6 +53,11 @@ webhook.post('/webhook', async (c) => {
     console.log('─'.repeat(50));
     console.log(`📱 Mensaje de: ${from} (${fromName || 'sin nombre'})`);
     console.log(`📝 Tipo: ${messageType}`);
+
+    // Marcar como leído inmediatamente (doble check azul)
+    markAsRead(waMessageId).then((ok) => {
+      if (ok) console.log('✓✓ Marcado como leído');
+    });
 
     let contentText = '';
     let mediaId: string | null = null;
